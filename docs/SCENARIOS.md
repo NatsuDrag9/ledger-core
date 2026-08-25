@@ -1,13 +1,13 @@
 # Concurrency Scenarios & Use Cases
 
-This document details the various concurrency architectures considered for the **Ledger Core** project, analyzes when and why each architecture is valid, and provides a guide to the Concurrency Lab Sandbox.
+This document details the concurrency architectures considered for the **Ledger Core** project, analyzes when and why each architecture is valid, and provides a guide to the Concurrency Lab Sandbox.
 
 ---
 
 ## 1. Concurrency Control Architectures
 
 ### A. Application-Level Mutex (In-Memory JVM Locks)
-* **How it works**: Uses standard language synchronization mechanisms (e.g., `synchronized` blocks, Java `ReentrantLock`, or Node.js in-memory mutexes) to serialize requests for a specific user ID in the application memory tier.
+* **How it works**: Uses standard language synchronization mechanisms (e.g., `synchronized` blocks, Java `ReentrantLock`) to serialize requests for a specific user ID in the application memory tier.
 * **Pros**: 
   - Extremely fast (sub-microsecond lock acquisition).
   - No database lock overhead or contention.
@@ -21,23 +21,7 @@ This document details the various concurrency architectures considered for the *
 
 ---
 
-### B. Distributed Locking (e.g., Redis Redlock)
-* **How it works**: Application nodes coordinate lock acquisition through a shared distributed memory store like Redis.
-* **Pros**:
-  - Allows horizontal scaling of the application layer.
-  - Keeps locks out of the primary relational database, reducing database lock contention.
-* **Cons**:
-  - Adds architectural complexity (requires Redis, cluster maintenance, client libraries).
-  - Network overhead for lock acquisition/release.
-  - Split-brain or clock drift issues can theoretically compromise safety in edge cases.
-* **Best Use Cases**:
-  - Multi-instance microservices.
-  - Highly distributed systems where lock coordination is needed across different services.
-  - High-traffic applications where database lock contention is a bottleneck but in-memory processing is required.
-
----
-
-### C. Database Row-Level Locking (Pessimistic write - `SELECT ... FOR UPDATE`)
+### B. Database Row-Level Locking (Pessimistic write - `SELECT ... FOR UPDATE`)
 * **How it works**: The backend initiates a database transaction and requests a pessimistic write lock on the target user's row. Subsequent database queries trying to read/write the same row with a lock are blocked until the first transaction commits or rolls back.
 * **Pros**:
   - Extremely robust and ACID-compliant.
@@ -53,20 +37,68 @@ This document details the various concurrency architectures considered for the *
 
 ---
 
-### D. In-Memory Actor Model / Virtual Threads
-* **How it works**: Transactions for a specific account are queued and processed sequentially by a dedicated in-memory Actor (e.g., via Pekko, Akka, or Java Virtual Threads). The database is updated asynchronously via write-behind batches.
-* **Pros**:
-  - Scales to 100k+ TPS by removing disk and row locks from the critical execution path.
-  - Verified in-memory speed.
-* **Cons**:
-  - Requires event sourcing and eventual consistency.
-  - Complex failure recovery (if the actor crashes mid-memory, state must be reconstructed from the transaction log).
-* **Best Use Cases**:
-  - High-frequency trading, massive scale ledger systems (e.g., Alipay, Visa, high-scale gaming bank systems).
+## 2. Transaction Execution Flow (Lock-then-Check)
+
+Here is the correct operational sequence of the transaction execution flow when database row-level locking is enabled. The idempotency key check and invariant verification are safely wrapped inside the pessimistic row lock boundary:
+
+### Operational Flowchart
+
+```mermaid
+graph TD
+    Start([Request Received]) --> BeginTx[1. Begin Database Transaction]
+    BeginTx --> LockRow[2. SELECT FOR UPDATE on User Row]
+    LockRow --> CheckIdempotency{3. Idempotency Key exists?}
+    
+    CheckIdempotency -- Yes --> ReturnReplay[4. Return Cached Replay Response 200 OK]
+    ReturnReplay --> CommitRollback[5. Commit/Rollback Transaction]
+    CommitRollback --> ReleaseLock([Lock Released])
+    
+    CheckIdempotency -- No --> CheckBalance{4. Balance >= Transaction Amount?}
+    
+    CheckBalance -- No --> RollbackTx[5. Rollback Transaction]
+    RollbackTx --> ReleaseLock400([Lock Released])
+    ReleaseLock400 --> InsufficientError[6. Return 400 Bad Request]
+    
+    CheckBalance -- Yes --> UpdateState[5. Deduct Balance & Insert Transaction]
+    UpdateState --> CommitTx[6. Commit Transaction]
+    CommitTx --> ReleaseLock201([Lock Released])
+    ReleaseLock201 --> SuccessResponse[7. Return 201 Created]
+```
+
+### Flow Diagram
+
+```text
+Request
+   |
+   v
+Spring Boot
+   |
+   v
+BEGIN DATABASE TRANSACTION
+   |
+   v
+SELECT user/account ... FOR UPDATE
+   |
+   v
+Row is locked
+   |
+   v
+Query Idempotency Key (Inside Lock)
+   ├── Key Exists ───────────────────────────> COMMIT/ROLLBACK ──> Return Replay (200 OK, replayed = true)
+   └── Key Does Not Exist
+         │
+         v
+      Check Balance Invariant
+         ├── Insufficient ───────────────────> ROLLBACK ──> Return Error (400 Bad Request)
+         └── Sufficient
+               │
+               v
+            Insert Transaction & Update Balance ──> COMMIT ──> Return Success (201 Created)
+```
 
 ---
 
-## 2. Pessimistic vs. Optimistic Locking
+## 3. Pessimistic vs. Optimistic Locking
 
 | Metric | Pessimistic Locking (`SELECT FOR UPDATE`) | Optimistic Locking (`@Version`) |
 | :--- | :--- | :--- |
@@ -77,7 +109,7 @@ This document details the various concurrency architectures considered for the *
 
 ---
 
-## 3. Concurrency Lab Sandbox Mechanics
+## 4. Concurrency Lab Sandbox Mechanics
 
 The sandbox provides two toggleable simulation modes to demonstrate the importance of locking:
 
@@ -92,4 +124,4 @@ When `disableLocking` is disabled (default):
 1. The backend queries the user row using `SELECT ... FOR UPDATE`, instantly locking it.
 2. If a second request arrives, PostgreSQL blocks it on the lock acquisition query.
 3. The first request completes its verification, saves the transaction, commits, and releases the lock.
-4. The second request unblocks, reads the updated balance, and correctly rejects the request with a `422 Unprocessable Entity` due to insufficient balance. Data integrity remains 100% intact.
+4. The second request unblocks, reads the updated balance, and correctly rejects the request with a `400 Bad Request` due to insufficient balance. Data integrity remains 100% intact.

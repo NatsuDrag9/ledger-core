@@ -6,14 +6,23 @@
 
 ---
 
+## Table of Contents
+1. [Project Overview](#project-overview)
+2. [Tech Stack](#tech-stack)
+3. [Backend Architecture & API Design (docs/BACKEND.md)](#backend-architecture--api-design)
+4. [Concurrency Control & Simulation Scenarios (docs/SCENARIOS.md)](#concurrency-control--simulation-scenarios)
+5. [Frontend Safety Labs (docs/FRONTEND.md)](#frontend-safety-labs)
+6. [Deployment Strategy](#deployment-strategy)
+
+---
+
 ## Project Overview
 **Ledger Core** is a full-stack personal finance and ledger application built primarily as a **System Design & Backend Engineering** practice project. The objective is to use a simple domain—accounts, transactions, balances, and income/expense tracking—to master real-world distributed systems concepts, transaction isolation, and high-concurrency architecture.
 
-This project is tailored for **system design interview preparation**, focusing on concrete solutions to classic backend challenges:
-- **Concurrency & Race Conditions**: Preventing double-spending or negative balances.
+It focuses on concrete solutions to classic backend challenges:
+- **Concurrency Control**: Preventing double-spending or negative balances.
 - **Idempotency**: Ensuring retried requests don't duplicate transactions.
 - **Data Consistency**: Maintaining strict alignment between transaction history and account balance.
-- **High Scalability**: Designing the system to conceptually scale to **100,000+ transactions per second (TPS)**.
 
 ---
 
@@ -21,147 +30,84 @@ This project is tailored for **system design interview preparation**, focusing o
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS.
 - **Backend**: Java, Spring Boot, Spring Data JPA.
 - **Database**: PostgreSQL (ACID compliant, utilized for row-level locking and uniqueness constraints).
-- **API Style**: RESTful API with headers-based metadata.
+- **API Style**: RESTful API with path-variable-driven routing and standard JSON responses (no custom HTTP headers).
 
 ---
 
-## Concurrency Control: Mutex vs. Database Row Locking
+## Backend Architecture & API Design
+The backend is built with Spring Boot and JPA, using a highly scalable, RESTful path-variable-driven API structure. All operations coordinate inside database transaction boundaries to maintain strict atomic integrity.
 
-Managing concurrent balance updates is a classic system design question. If a user with a \$100 balance fires two debit requests of \$80 simultaneously, we must ensure only one succeeds.
-
-Here is how the two architectures compare:
-
-### 1. Application-Level Mutex (The Original *Vaultex* Approach)
-In this model, the application acquires an in-memory lock (mutex) for the `user_id` before querying the database, checking the balance, and writing the transaction.
-
-* **Pros**: 
-  - Extremely fast lock acquisition (in-memory, nanoseconds/microseconds).
-  - No database lock overhead; database queries are shielded from lock contention.
-* **Cons**:
-  - **Single Instance Only**: Works only if there is a single backend server. In a horizontally scaled system with a load balancer, multiple backend instances do not share the same JVM memory, leading to race conditions.
-  - **Distributed Lock Complexity**: To scale horizontally, you must replace the in-memory mutex with a distributed locking coordinator like **Redis (Redlock)** or **ZooKeeper**, adding infrastructure complexity, network latency, and failure edge-cases.
-
-### 2. Database Row-Level Locking (The *Ledger Core* Approach)
-Instead of locking in the application, we push the synchronization boundary down to the database using PostgreSQL's row-level locking (`SELECT ... FOR UPDATE`).
-
-```sql
--- Lock the user's account row for the duration of the database transaction
-SELECT balance FROM accounts WHERE user_id = :userId FOR UPDATE;
-```
-
-* **Pros**:
-  - **Horizontally Scalable out-of-the-box**: Multiple Spring Boot instances can safely run behind a load balancer; PostgreSQL coordinates the locks centrally.
-  - **Simplicity**: No need for a distributed lock manager (Redis). Uses the database's native ACID capabilities.
-* **Cons**:
-  - **Connection Pool Contention**: Database connections are held open for the duration of the lock. If the critical section contains slow operations (e.g., external API calls), connection pools will quickly exhaust.
-  - *Mitigation*: Keep the transactional scope extremely short (DB read -> validation -> DB write -> commit). Never call external network APIs while holding a database lock.
+For a complete breakdown of endpoints, the data model schema, idempotency design, and CORS configuration:
+See the detailed [docs/BACKEND.md](docs/BACKEND.md) file.
 
 ---
 
-## Concurrency Labs & The TOCTOU Problem
+## Concurrency Control & Simulation Scenarios
+Ledger Core explores different concurrency protection strategies:
 
-To demonstrate these issues visually, Ledger Core includes a **Safety Labs** interface in the frontend:
-1. **Idempotency Lab**: Fires multiple identical requests with a single `X-Idempotency-Key` concurrently. Only **one** transaction is created (`201 Created`), while subsequent requests receive the cached result (`200 OK` with an `Idempotency-Replay: true` header).
-2. **Concurrency Lab**: Fires multiple concurrent requests with *different* keys. One request holds the lock, while the rest are immediately rejected with a **`409 Conflict`** (Reject-on-Busy strategy) rather than queuing, preserving resource health.
+### 1. Application-Level Mutex (Single-Instance JVM)
+Requests for the same user ID are serialized inside the JVM memory block.
 
-### The TOCTOU (Time of Check to Time of Use) Bug
-During development of the concurrency check, a classic race condition can occur if the check and lock acquisition are not atomic:
-
-```
-[Request A] ── Check if User Status is 'idle' (True) ───────────────> [Set to 'processing']
-[Request B] ────── Check if User Status is 'idle' (True) ───────────> [Set to 'processing']
+```text
+Spring Boot Instance
+ ├── Thread 1 (User A) ──> Acquire Local Mutex (Success) ──> DB Write ──> Release Mutex
+ └── Thread 2 (User A) ──> Acquire Local Mutex (Blocked) ──> Wait...
 ```
 
-Because of asynchronous latency between checking the state and writing the lock status, both requests pass the check. 
-* **The Solution**: The lock must be acquired **synchronously and atomically** the moment the request hits the server. If the lock is busy, the request is immediately rejected.
-* **Life Cycle Hook Safeguards**: Locks must be released using response hooks (`finish` and `close`). If a client drops their connection midway, the connection `close` event ensures the lock is freed, avoiding stuck accounts.
+*Limits*: Under a load balancer with multiple backend instances, local JVM locks cannot coordinate:
 
-### The Idempotency Check Race Condition (TOCTOU in DB Transactions)
-In the initial transaction flow proposed in `PROJECT_DESIGN.md`, the idempotency check is performed *before* acquiring the database row lock. This creates a critical race condition:
-
-```
-[Request A] ── Check Idempotency Key (Doesn't Exist) ──> Acquire Row Lock (Success) ──> Commit Write
-[Request B] ── Check Idempotency Key (Doesn't Exist) ──> Acquire Row Lock (Blocked) ... Wait ... Unblocks ──> Attempt Write (FAIL with Unique Constraint Exception)
+```text
+Spring Boot Instance 1 (Local Mutex A)  ──\
+                                           ├──> Race Condition on Database Row!
+Spring Boot Instance 2 (Local Mutex B)  ──/
 ```
 
-Because Request B performs the idempotency check *before* Request A commits, it does not see the key. When it finally acquires the lock, it blindly attempts the write, resulting in a database unique constraint violation (`500 Internal Server Error` or exception) instead of returning a clean cached response of Request A.
+### 2. Database Row-Level Locking (Pessimistic `SELECT ... FOR UPDATE`)
+We push the serialization boundary to PostgreSQL, allowing multiple Spring Boot instances to scale horizontally:
 
-#### The Corrected Database Transaction Flow:
-To fix this, the idempotency check must occur **inside** the locked transaction block, *after* the row lock is acquired:
-
-```
-Request
-   │
-   ▼
-Spring Boot
-   │
-   ▼
-BEGIN TRANSACTION
-   │
-   ▼
-Lock User Account Row (SELECT ... FOR UPDATE)
-   │
-   ▼
-Query Idempotency Key (Inside Lock)
-   ├── Key Exists ───────────────────────────> COMMIT/ROLLBACK ──> Return Replay (200 OK + Header)
-   └── Key Does Not Exist
-         │
-         ▼
-      Check Balance Invariant
-         ├── Insufficient ───────────────────> ROLLBACK ──> Return Error (422/400)
-         └── Sufficient
-               │
-               ▼
-            Insert Transaction & Update Balance ──> COMMIT ──> Return Success (201 Created)
+```text
+Spring Boot Instance 1 ──\
+Spring Boot Instance 2 ───┼──> PostgreSQL Row Lock (Centralized Coordination)
+Spring Boot Instance 3 ──/
 ```
 
-By querying the idempotency key *after* locking the user row, any concurrent request with the same key is forced to wait until the first request completes and commits. The second request then queries the table, finds the newly committed transaction, and returns it safely.
-
----
-
-## Scaling to 100,000+ Transactions Per Second (TPS)
-
-A single relational database instance (like PostgreSQL) maxes out around 10k–40k TPS under standard workloads due to disk write limits (Write-Ahead Log (WAL) synchronization) and lock contention on single account rows. 
-
-To scale Ledger Core to **100k+ TPS**, we must evolve the architecture using the following system design patterns:
+### Transaction Execution Flow (Lock-then-Check)
+To prevent TOCTOU (Time-of-Check to Time-of-Use) race conditions, the idempotency check and invariant validation must happen *inside* the locked transaction:
 
 ```mermaid
 graph TD
-    Client[Clients] -->|REST / gRPC| LB[Load Balancer]
-    LB -->|Partitioned by Account ID| GW[API Gateway / Ingestion Tier]
-    GW -->|Produce Messages| Kafka[Apache Kafka Cluster]
+    Start([Request Received]) --> BeginTx[1. Begin Database Transaction]
+    BeginTx --> LockRow[2. SELECT FOR UPDATE on User Row ]
+    LockRow --> CheckIdempotency{3. Idempotency Key exists?}
     
-    subgraph Stream Processing / In-Memory Tier
-        Kafka -->|Partition Key: Account ID| Workers[Worker Pool / Akka Actors]
-        Workers -->|State: Balances in Cache| Redis[Distributed In-Memory Cache]
-    end
-
-    subgraph Relational Persistence
-        Workers -->|Asynchronous Batch Writes| DB[Sharded PostgreSQL Cluster]
-    end
+    CheckIdempotency -- Yes --> ReturnReplay[4. Return Cached Replay Response 200 OK]
+    ReturnReplay --> CommitRollback[5. Commit/Rollback Transaction]
+    CommitRollback --> ReleaseLock([Lock Released])
+    
+    CheckIdempotency -- No --> CheckBalance{4. Balance >= Transaction Amount?}
+    
+    CheckBalance -- No --> RollbackTx[5. Rollback Transaction]
+    RollbackTx --> ReleaseLock400([Lock Released])
+    ReleaseLock400 --> InsufficientError[6. Return 400 Bad Request]
+    
+    CheckBalance -- Yes --> UpdateState[5. Deduct Balance & Insert Transaction]
+    UpdateState --> CommitTx[6. Commit Transaction]
+    CommitTx --> ReleaseLock201([Lock Released])
+    ReleaseLock201 --> SuccessResponse[7. Return 201 Created]
 ```
 
-### 1. Partitioning & Sharding (Scale-Out Data Tier)
-* **Strategy**: Horizontally partition (shard) the database by `account_id` or `user_id`.
-* **Execution**: Instead of routing all transactions to a single PostgreSQL instance, database routing middleware (e.g., **Vitess** or Spring's dynamic data source routing) routes requests across a cluster of (say, 10) database shards. Since transactions for different accounts are independent, we achieve linear scaling.
+For visual execution diagrams, sequence charts, comparative locking metrics, and concurrency sandbox mechanics:
+See the detailed [docs/SCENARIOS.md](docs/SCENARIOS.md) file.
 
-### 2. Memory-First Architecture & Actor Model
-* **Strategy**: Remove disk write bottlenecks from the critical path of transaction verification.
-* **Execution**: Implement an actor-based architecture (using **Java Virtual Threads** or frameworks like **Pekko/Orleans**). 
-  - Each account behaves as a single in-memory Actor.
-  - Transactions for a specific account are queued and processed sequentially by that account's actor in-memory.
-  - Since memory operations take nanoseconds, balance verification and updates are incredibly fast. No database row-locks are needed.
+---
 
-### 3. Event Sourcing & Message Queues
-* **Strategy**: Transition from synchronous CRUD API calls to asynchronous event streaming.
-* **Execution**:
-  - Ingest transactions into a distributed messaging system like **Apache Kafka**, partitioned by `account_id`.
-  - Kafka guarantees that all transactions for a specific account are routed to the same partition and processed strictly in the order they arrived.
-  - Background consumers process transactions from Kafka in batches, writing them to PostgreSQL in bulk. Batch inserts bypass individual transaction commit overhead, increasing database write throughput by up to 50x.
+## Frontend Safety Labs
+The React-based frontend features a dashboard equipped with interactive safety/simulation playgrounds:
+- **Idempotency Lab**: Verifies duplicate request suppression.
+- **Concurrency Lab**: Forces thread contention to demonstrate race conditions vs. serialized execution.
 
-### 4. Write-Behind Caching
-* **Strategy**: Cache the source of truth for balances and sync to disk asynchronously.
-* **Execution**: Use a distributed memory grid (e.g., **Redis** or **Apache Ignite**). A transaction immediately updates the balance in the cache (Write-Through/Write-Behind) and is written to a fast append-only transaction log. The main relational database (PostgreSQL) is updated asynchronously for cold storage and reporting.
+For details on state management, components, and client-side setup:
+See the detailed [docs/FRONTEND.md](docs/FRONTEND.md) file.
 
 ---
 

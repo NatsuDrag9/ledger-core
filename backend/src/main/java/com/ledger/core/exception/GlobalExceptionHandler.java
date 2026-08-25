@@ -23,13 +23,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.ok(ex.getResponse());
     }
 
-    // Handle balance validation errors (returns 422 unprocessable entity)
+    // Handle balance validation errors (returns 400 Bad Request)
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> handleInsufficientBalance(IllegalStateException ex) {
         Map<String, String> errorBody = new HashMap<>();
         errorBody.put("error", ex.getMessage());
 
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorBody);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody);
     }
 
     // Handler user/profile missing errors (returns 404)
