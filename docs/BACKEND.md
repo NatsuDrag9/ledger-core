@@ -61,6 +61,8 @@ GET  /api/v1/ledger/users/{userId}
 GET  /api/v1/ledger/users/{userId}/transactions
 POST /api/v1/ledger/users/{userId}/transactions
      Query Param: disableLocking=true (optional, to bypass locking and trigger race conditions)
+POST /api/v1/ledger/users/{userId}/transactions/jvm
+     Query Param: disableJvmLocking=true (optional, to bypass JVM locking and trigger race conditions)
 
 
 NON-FUNCTIONAL REQUIREMENTS

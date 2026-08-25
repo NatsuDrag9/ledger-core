@@ -140,4 +140,88 @@ public class LedgerConcurrencyTest {
         long txCount = transactionRepository.count();
         assertThat(txCount).isEqualTo(2);
     }
+
+    @Test
+    void testJvmConcurrencyWithLockingEnabled() throws InterruptedException {
+        int threads = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threads);
+
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger failureCount = new AtomicInteger(0);
+
+        for (int i = 0; i < threads; i++) {
+            final int index = i;
+            executor.submit(() -> {
+                try {
+                    latch.await(); // wait for trigger
+                    TransactionRequest request = TransactionRequest.builder()
+                            .amount(new BigDecimal("80.00"))
+                            .type(TransactionType.DEBIT)
+                            .idempotencyKey("key-jvmlock-" + index)
+                            .build();
+                    ledgerService.createTransactionJvmLock(testUserId, request, false);
+                    successCount.incrementAndGet();
+                } catch (Exception e) {
+                    failureCount.incrementAndGet();
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+        }
+
+        latch.countDown(); // trigger threads simultaneously
+        doneLatch.await(5, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // One request must succeed, one must fail due to insufficient balance
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(failureCount.get()).isEqualTo(1);
+
+        User finalUser = userRepository.findById(testUserId).orElseThrow();
+        assertThat(finalUser.getBalance()).isEqualByComparingTo(new BigDecimal("20.00"));
+    }
+
+    @Test
+    void testJvmConcurrencyWithLockingDisabled() throws InterruptedException {
+        int threads = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threads);
+
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger failureCount = new AtomicInteger(0);
+
+        for (int i = 0; i < threads; i++) {
+            final int index = i;
+            executor.submit(() -> {
+                try {
+                    latch.await();
+                    TransactionRequest request = TransactionRequest.builder()
+                            .amount(new BigDecimal("80.00"))
+                            .type(TransactionType.DEBIT)
+                            .idempotencyKey("key-jvm-nolock-" + index)
+                            .build();
+                    ledgerService.createTransactionJvmLock(testUserId, request, true);
+                    successCount.incrementAndGet();
+                } catch (Exception e) {
+                    failureCount.incrementAndGet();
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+        }
+
+        latch.countDown();
+        doneLatch.await(5, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // With JVM locking disabled and 100ms delay, both proceed and overwrite/double-debit
+        assertThat(successCount.get()).isEqualTo(2);
+        assertThat(failureCount.get()).isEqualTo(0);
+
+        long txCount = transactionRepository.count();
+        assertThat(txCount).isEqualTo(2);
+    }
 }

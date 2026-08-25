@@ -61,4 +61,14 @@ public class LedgerController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ledgerService.createTransaction(userId, request, disableLocking));
     }
+
+    // Create a new transaction with JVM level locking
+    @PostMapping("/users/{userId}/transactions/jvm-lock")
+    public ResponseEntity<TransactionResponse> createTransactionJvm(
+            @PathVariable("userId") UUID userId,
+            @RequestParam(value = "disableJvmLocking", required = false, defaultValue = "false") boolean disableJvmLocking,
+            @Valid @RequestBody TransactionRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ledgerService.createTransactionJvmLock(userId, request, disableJvmLocking));
+    }
 }

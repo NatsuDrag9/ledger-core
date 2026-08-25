@@ -111,17 +111,37 @@ Query Idempotency Key (Inside Lock)
 
 ## 4. Concurrency Lab Sandbox Mechanics
 
-The sandbox provides two toggleable simulation modes to demonstrate the importance of locking:
+The sandbox provides two toggleable simulation modes covering both Database Row-Level Locking and Application JVM-Level Locking:
 
-### A. Lock-Disabled Mode (`disableLocking=true`)
+### Scenario 1: Database Row-Level Locking (`POST /api/v1/ledger/users/{userId}/transactions`)
+
+#### A. Lock-Disabled Mode (`disableLocking=true`)
 When `disableLocking` is enabled, the backend:
 1. Queries the database using a standard `SELECT` (bypassing `FOR UPDATE`).
 2. Introduces an **artificial 100ms delay** (`Thread.sleep(100)`) between the check (read) and write (update) phases.
 3. Concurrent requests read the same initial balance, bypass the checks, and execute overlapping updates. This triggers the **TOCTOU (Time-of-Check to Time-of-Use)** race condition, causing the balance to become negative or inconsistent.
 
-### B. Lock-Enabled Mode (`disableLocking=false`)
+#### B. Lock-Enabled Mode (`disableLocking=false`)
 When `disableLocking` is disabled (default):
 1. The backend queries the user row using `SELECT ... FOR UPDATE`, instantly locking it.
 2. If a second request arrives, PostgreSQL blocks it on the lock acquisition query.
 3. The first request completes its verification, saves the transaction, commits, and releases the lock.
 4. The second request unblocks, reads the updated balance, and correctly rejects the request with a `400 Bad Request` due to insufficient balance. Data integrity remains 100% intact.
+
+---
+
+### Scenario 2: Application JVM-Level Locking (`POST /api/v1/ledger/users/{userId}/transactions/jvm`)
+
+#### A. Lock-Disabled Mode (`disableJvmLocking=true`)
+When `disableJvmLocking` is enabled, the backend:
+1. Bypasses the in-memory JVM synchronization lock for the user's ID.
+2. Executes the transaction operations under a normal database transaction using standard non-locking `SELECT` and introduces a 100ms artificial delay.
+3. Overlapping threads simultaneously query and validate the balance, leading to double-debits and balance inconsistency.
+
+#### B. Lock-Enabled Mode (`disableJvmLocking=false`)
+When `disableJvmLocking` is disabled (default):
+1. The backend resolves a lock object specifically for the user ID using a `ConcurrentHashMap` of user-specific locks.
+2. The executing thread acquires the in-memory monitor lock using a Java `synchronized` block.
+3. While holding the lock, it initiates the database transaction programmatically using `TransactionTemplate`, ensuring the database transaction starts, queries the balance (non-locking `SELECT`), commits the changes, and finishes *inside* the synchronized block boundary before the JVM lock is released.
+4. If a second concurrent request arrives for the same user ID, it is blocked on the Java monitor lock, waiting for the first request's database transaction to fully commit and release the lock.
+5. Once unblocked, the second thread executes, reads the newly committed balance, and is rejected with `400 Bad Request`.
