@@ -23,9 +23,18 @@ public class TransactionResponse {
     private TransactionType type;
     private BigDecimal balanceAfter;
     private LocalDateTime createdAt;
+    private boolean replayed;
 
     // Add builder with from
-    public static TransactionResponse fromEntity(Transaction tx) {
-        return TransactionResponse.builder().id(tx.getId()).userId(tx.getUser().getId()).amount(tx.getAmount()).type(tx.getType()).balanceAfter(tx.getBalanceAfter()).createdAt(tx.getCreatedAt()).build();
+    public static TransactionResponse fromEntity(Transaction tx, boolean replayed) {
+        return TransactionResponse.builder()
+                .id(tx.getId())
+                .userId(tx.getUser().getId())
+                .amount(tx.getAmount())
+                .type(tx.getType())
+                .balanceAfter(tx.getBalanceAfter())
+                .createdAt(tx.getCreatedAt())
+                .replayed(replayed)
+                .build();
     }
 }

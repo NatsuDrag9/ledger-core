@@ -33,8 +33,8 @@ public class LedgerController {
     }
 
     // Get current logged-in user profile
-    @GetMapping("/users/profile")
-    public ResponseEntity<UserResponse> getUserProfile(@RequestHeader("X-User-Id") UUID userId) {
+    @GetMapping("/users/{userId}")
+    public ResponseEntity<UserResponse> getUserProfile(@PathVariable("userId") UUID userId) {
         return ResponseEntity.ok(ledgerService.getUserProfile(userId));
     }
 
@@ -45,16 +45,20 @@ public class LedgerController {
     }
 
     // Get paginated transaction history
-    // Using a custom header of user-id until jwt authentication is implemented
-    @GetMapping("/transactions")
-    public ResponseEntity<Page<TransactionResponse>> getTransactions(@RequestHeader("X-User-Id") UUID userId, @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+    @GetMapping("/users/{userId}/transactions")
+    public ResponseEntity<Page<TransactionResponse>> getTransactions(
+            @PathVariable("userId") UUID userId,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(ledgerService.getTransactions(userId, pageable));
     }
 
     // Create a new transaction
-    @PostMapping("/transactions")
-    public ResponseEntity<TransactionResponse>
-    createTransaction(@RequestHeader("X-User-Id") UUID userId, @Valid @RequestBody TransactionRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(ledgerService.createTransaction(userId, request));
+    @PostMapping("/users/{userId}/transactions")
+    public ResponseEntity<TransactionResponse> createTransaction(
+            @PathVariable("userId") UUID userId,
+            @RequestParam(value = "disableLocking", required = false, defaultValue = "false") boolean disableLocking,
+            @Valid @RequestBody TransactionRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ledgerService.createTransaction(userId, request, disableLocking));
     }
 }

@@ -60,19 +60,36 @@ public class LedgerService {
             throw new IllegalArgumentException("User not found");
         }
 
-        return transactionRepository.findByUserId(userId, pageable).map(TransactionResponse::fromEntity);
+        return transactionRepository.findByUserId(userId, pageable).map(tx -> TransactionResponse.fromEntity(tx, false));
     }
 
     @Transactional
-    public TransactionResponse createTransaction(UUID userId, TransactionRequest request) {
-        // Acquire lock for the USER (SELECT FOR UPDATE)
-        User user = userRepository.findByIdForUpdateOptional(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
+    public TransactionResponse createTransaction(UUID userId, TransactionRequest request, boolean disableLocking) {
+        User user;
+        if(disableLocking) {
+            // Bypass lock (normal select query on SQL)
+            user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+            // Artificial delay to simulate concurrent load - threads overlap
+            try {
+                Thread.sleep(100);
+            }
+            catch(InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        else {
+            // Acquire lock for the USER (SELECT FOR UPDATE)
+            user = userRepository.findByIdForUpdateOptional(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
+        }
 
         // Check idempotency key inside lock
         var existingTx = transactionRepository.findByUserIdAndIdempotencyKey(userId, request.getIdempotencyKey());
         // Get existing row if present
         if(existingTx.isPresent()) {
-            return TransactionResponse.fromEntity(existingTx.get());
+            throw new com.ledger.core.exception.IdempotencyReplayException(
+                TransactionResponse.fromEntity(existingTx.get(), true)
+            );
         }
 
         // Check balance invariant
@@ -100,7 +117,7 @@ public class LedgerService {
             .balanceAfter(newBalance)
             .build();
 
-        return TransactionResponse.fromEntity(transactionRepository.save(tx));
+        return TransactionResponse.fromEntity(transactionRepository.save(tx), false);
     }
 
 }

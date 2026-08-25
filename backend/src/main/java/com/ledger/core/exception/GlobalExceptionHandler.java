@@ -17,14 +17,11 @@ import jakarta.servlet.http.HttpServletRequest;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // Handle replayed requests (returns 200 OK + Idempotency-Replay header)
+    // Handle replayed requests (returns 200 OK)
     @ExceptionHandler(IdempotencyReplayException.class)
-    public ResponseEntity<TransactionResponse>
-        handleIdempotencyReplay(IdempotencyReplayException ex, HttpServletRequest request) {
-            return ResponseEntity.status(HttpStatus.OK)
-                .header("Idempotency-Replay", "true")
-                .body(ex.getResponse());
-        }
+    public ResponseEntity<TransactionResponse> handleIdempotencyReplay(IdempotencyReplayException ex) {
+        return ResponseEntity.ok(ex.getResponse());
+    }
 
     // Handle balance validation errors (returns 422 unprocessable entity)
     @ExceptionHandler(IllegalStateException.class)

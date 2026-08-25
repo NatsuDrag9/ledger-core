@@ -37,7 +37,7 @@ public class LedgerCoreApplication {
             }
         };
     }
-    // Configures CORS and exposes the custom replay header
+    // Configures CORS
     @Bean
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
@@ -46,8 +46,7 @@ public class LedgerCoreApplication {
                 registry.addMapping("/**")
                         .allowedOrigins("*")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                        .allowedHeaders("*")
-                        .exposedHeaders("Idempotency-Replay"); // Must expose custom headers to browser clients
+                        .allowedHeaders("*");
             }
         };
     }

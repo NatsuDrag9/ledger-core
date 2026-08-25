@@ -48,23 +48,19 @@ FUNCTIONAL REQUIREMENTS
 1. Create income
 2. Create expense
 3. View transactions
-4. Delete transaction
-5. View balance
-6. Create temporary user
-7. View user profile
-
-Temporary users expire after approximately 30 minutes.
+4. View balance / user profile
+5. Create temporary user
 
 
 API ENDPOINTS
 -------------
-GET    /transactions
-GET    /balance
-POST   /transactions
-DELETE /transactions/:id
+GET  /api/v1/ledger/users
+POST /api/v1/ledger/users
 
-POST   /user/create
-GET    /user/profile
+GET  /api/v1/ledger/users/{userId}
+GET  /api/v1/ledger/users/{userId}/transactions
+POST /api/v1/ledger/users/{userId}/transactions
+     Query Param: disableLocking=true (optional, to bypass locking and trigger race conditions)
 
 
 NON-FUNCTIONAL REQUIREMENTS
