@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.ledger.core.dto.TransactionRequest;
 import com.ledger.core.dto.TransactionResponse;
 import com.ledger.core.dto.UserResponse;
+import com.ledger.core.exception.IdempotencyReplayException;
 import com.ledger.core.model.Transaction;
 import com.ledger.core.model.TransactionType;
 import com.ledger.core.model.User;
@@ -69,31 +70,31 @@ public class LedgerService {
 
     @Transactional
     public TransactionResponse createTransaction(UUID userId, TransactionRequest request, boolean disableLocking) {
-        boolean usePessimisticLock = !disableLocking;
+        boolean useRowLockOfDb = !disableLocking;
         boolean simulateDelay = disableLocking;
-        return executeTransactionOperations(userId, request, usePessimisticLock, simulateDelay);
+        return executeTransactionOperations(userId, request, useRowLockOfDb, simulateDelay);
     }
 
     public TransactionResponse createTransactionJvmLock(UUID userId, TransactionRequest request, boolean disableJvmLocking) {
-        boolean usePessimisticLock = false;
+        boolean useRowLockOfDb = false;
         boolean simulateDelay = disableJvmLocking;
 
         if (disableJvmLocking) {
             // Bypass JVM lock, run database operations inside a database transaction
-            return transactionTemplate.execute(status -> executeTransactionOperations(userId, request, usePessimisticLock, simulateDelay));
+            return transactionTemplate.execute(status -> executeTransactionOperations(userId, request, useRowLockOfDb, simulateDelay));
         } else {
             // Acquire JVM lock
             Object lock = userLocks.computeIfAbsent(userId, k -> new Object());
             synchronized (lock) {
                 // Run database operations inside a database transaction while holding the JVM lock
-                return transactionTemplate.execute(status -> executeTransactionOperations(userId, request, usePessimisticLock, simulateDelay));
+                return transactionTemplate.execute(status -> executeTransactionOperations(userId, request, useRowLockOfDb, simulateDelay));
             }
         }
     }
 
-    private TransactionResponse executeTransactionOperations(UUID userId, TransactionRequest request, boolean usePessimisticLock, boolean simulateDelay) {
+    private TransactionResponse executeTransactionOperations(UUID userId, TransactionRequest request, boolean useRowLockOfDb, boolean simulateDelay) {
         User user;
-        if (usePessimisticLock) {
+        if (useRowLockOfDb) {
             // Acquire lock for the USER (SELECT FOR UPDATE)
             user = userRepository.findByIdForUpdateOptional(userId)
                     .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -115,7 +116,7 @@ public class LedgerService {
         // Check idempotency key inside lock
         var existingTx = transactionRepository.findByUserIdAndIdempotencyKey(userId, request.getIdempotencyKey());
         if (existingTx.isPresent()) {
-            throw new com.ledger.core.exception.IdempotencyReplayException(
+            throw new IdempotencyReplayException(
                 TransactionResponse.fromEntity(existingTx.get(), true)
             );
         }
