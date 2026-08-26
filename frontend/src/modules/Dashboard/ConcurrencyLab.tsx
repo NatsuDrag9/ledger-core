@@ -216,7 +216,7 @@ export const ConcurrencyLab: React.FC<ConcurrencyLabProps> = ({ onRefresh }) => 
               <p className="text-xs text-slate-500 mt-0.5">Thread execution telemetry</p>
             </div>
           </div>
-          <LogConsole logs={logs} onClear={handleClearLogs} />
+          <LogConsole logs={logs} />
         </div>
 
         {/* Helpful hints */}
