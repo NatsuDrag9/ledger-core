@@ -13,6 +13,26 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class LedgerCoreApplication {
 
 	public static void main(String[] args) {
+		// Normalize database connection URL schemes to be compatible with the PostgreSQL JDBC driver.
+		// Render/Heroku provide URLs starting with postgresql:// or postgres://, which JDBC does not accept directly.
+		String url = System.getenv("SPRING_DATASOURCE_URL");
+		if (url != null) {
+			if (url.startsWith("postgresql://")) {
+				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:" + url);
+			} else if (url.startsWith("postgres://")) {
+				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:postgresql://" + url.substring("postgres://".length()));
+			}
+		}
+
+		String dbUrl = System.getenv("DATABASE_URL");
+		if (dbUrl != null && System.getProperty("SPRING_DATASOURCE_URL") == null) {
+			if (dbUrl.startsWith("postgresql://")) {
+				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:" + dbUrl);
+			} else if (dbUrl.startsWith("postgres://")) {
+				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:postgresql://" + dbUrl.substring("postgres://".length()));
+			}
+		}
+
 		SpringApplication.run(LedgerCoreApplication.class, args);
 	}
 
