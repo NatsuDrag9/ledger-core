@@ -118,11 +118,37 @@ You can run the entire stack (PostgreSQL database, Spring Boot backend, and Reac
 
 1. Build and start the services:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 2. The services will be accessible at:
-   - **Frontend UI**: `http://localhost` (Port 80)
+   - **Frontend UI**: `http://localhost:5173` (Nginx mapping host port `5173` to container port `80`)
    - **Backend REST API**: `http://localhost:8080`
    - **PostgreSQL Database**: `http://localhost:5432`
+
+---
+
+### Production Railway Deployment
+
+You can deploy the entire ledger system (PostgreSQL database, Spring Boot backend, and React Nginx frontend) onto Railway from this repository.
+
+#### 1. Provision a PostgreSQL Database
+1. In your Railway project dashboard, click **New** -> **Database** -> **Add PostgreSQL**.
+2. Railway will automatically initialize the database cluster and generate connection credentials.
+
+#### 2. Deploy the Spring Boot Backend
+1. Click **New** -> **GitHub Repo** -> select the `ledger-core` repository.
+2. In the service settings, set the **Root Directory** to `backend`. Railway will automatically locate the `backend/Dockerfile` to compile and launch the Java application.
+3. Add the database environment variables to link the backend to the database service:
+   - `SPRING_DATASOURCE_URL` = `${{Postgres.DATABASE_URL}}`
+   - `SPRING_DATASOURCE_USERNAME` = `${{Postgres.PGUSER}}`
+   - `SPRING_DATASOURCE_PASSWORD` = `${{Postgres.PGPASSWORD}}`
+
+#### 3. Deploy the React Frontend
+1. Click **New** -> **GitHub Repo** -> select the `ledger-core` repository.
+2. In the service settings:
+   - Set the **Root Directory** to `frontend`. Railway will automatically find the `frontend/Dockerfile` and compile the static files into Nginx.
+   - Set the branch to the one containing the frontend Dockerfile (`main` after merge).
+3. Add the following environment variable to the service:
+   - `VITE_API_URL` = `/api/v1/ledger` (Nginx handles proxying client requests from the frontend to the backend internally).
 
 ---
