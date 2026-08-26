@@ -86,6 +86,53 @@ export const Login: React.FC = () => {
     }
   };
 
+  const renderQuickSelect = () => {
+    if (isLoadingUsers) {
+      return (
+        <div className="flex items-center justify-center p-4 border border-indigo-950/40 bg-indigo-950/10 rounded-xl">
+          <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-xs text-slate-400 ml-2.5">Loading profiles...</span>
+        </div>
+      );
+    }
+
+    if (seededUsers.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+          <Users className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Quick-Select Test Profiles:</span>
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          {seededUsers.map((user) => (
+            <button
+              key={user.id}
+              type="button"
+              onClick={() => {
+                setUserIdInput(user.id);
+                setError(null);
+              }}
+              className="flex items-center justify-between p-3 rounded-xl border border-indigo-950/60 bg-indigo-950/15 hover:bg-indigo-950/30 hover:border-indigo-500/40 transition-all text-left group"
+            >
+              <div>
+                <div className="text-xs font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">
+                  {user.username}
+                </div>
+                <div className="text-[9px] text-slate-500 font-mono mt-0.5 select-all">{user.id}</div>
+              </div>
+              <div className="text-xs font-mono font-bold text-slate-400">
+                ₹{user.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex items-center justify-center min-h-screen p-4 bg-gradient-to-br from-[#0c1020] via-[#090b11] to-[#04060b]">
       <Card className="w-full max-w-md border border-indigo-950/40 glow-indigo">
@@ -109,37 +156,7 @@ export const Login: React.FC = () => {
             autoFocus
           />
 
-          {seededUsers.length > 0 && (
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                <Users className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Quick-Select Test Profiles:</span>
-              </div>
-              <div className="grid grid-cols-1 gap-2">
-                {seededUsers.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => {
-                      setUserIdInput(user.id);
-                      setError(null);
-                    }}
-                    className="flex items-center justify-between p-3 rounded-xl border border-indigo-950/60 bg-indigo-950/15 hover:bg-indigo-950/30 hover:border-indigo-500/40 transition-all text-left group"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">
-                        {user.username}
-                      </div>
-                      <div className="text-[9px] text-slate-500 font-mono mt-0.5 select-all">{user.id}</div>
-                    </div>
-                    <div className="text-xs font-mono font-bold text-slate-400">
-                      ₹{user.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {renderQuickSelect()}
 
           <Button type="submit" className="w-full" isLoading={isValidating}>
             Enter Lab Sandbox
