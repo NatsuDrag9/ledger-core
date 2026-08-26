@@ -113,11 +113,23 @@ See the detailed [docs/FRONTEND.md](docs/FRONTEND.md) file.
 
 ## Deployment Strategy
 
-For showcasing this application as a production-ready portfolio item, here is a comparison of hosting choices:
+### Production Deployment
+For showcasing this application as a production-ready portfolio item:
 
-| Service / Role | Deployment Option |
-| :--- | :--- |
-| **Backend & Database** | **PaaS (Render / Railway / Fly.io)** — Deploy the Spring Boot app and PostgreSQL for free. |
-| **Frontend** | **Netlify** — Host the React UI and point API calls to the backend. |
+#### 1. Backend & Database (Render / Railway)
+- Provision a managed **PostgreSQL** database on Render or Railway.
+- Deploy the Spring Boot application using the provided `backend/Dockerfile`.
+- Set the following environment variables on your backend container:
+  - `SPRING_DATASOURCE_URL`: Your production database URL.
+  - `SPRING_DATASOURCE_USERNAME`: Your database username.
+  - `SPRING_DATASOURCE_PASSWORD`: Your database password.
+
+#### 2. Frontend (Netlify)
+- Deploy the React UI to **Netlify** using static web hosting.
+- Configure Netlify to run the build command `npm run build` with the publish directory set to `dist/`.
+- Add the `VITE_API_URL` environment variable in the Netlify Dashboard to point to your live backend domain:
+  ```env
+  VITE_API_URL=https://<your-backend-domain>.railway.app/api/v1/ledger
+  ```
 
 ---
