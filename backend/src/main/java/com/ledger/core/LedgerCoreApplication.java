@@ -18,18 +18,24 @@ public class LedgerCoreApplication {
 		String url = System.getenv("SPRING_DATASOURCE_URL");
 		if (url != null) {
 			if (url.startsWith("postgresql://")) {
+				System.setProperty("spring.datasource.url", "jdbc:" + url);
 				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:" + url);
 			} else if (url.startsWith("postgres://")) {
-				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:postgresql://" + url.substring("postgres://".length()));
+				String formatted = "jdbc:postgresql://" + url.substring("postgres://".length());
+				System.setProperty("spring.datasource.url", formatted);
+				System.setProperty("SPRING_DATASOURCE_URL", formatted);
 			}
 		}
 
 		String dbUrl = System.getenv("DATABASE_URL");
-		if (dbUrl != null && System.getProperty("SPRING_DATASOURCE_URL") == null) {
+		if (dbUrl != null && System.getProperty("spring.datasource.url") == null) {
 			if (dbUrl.startsWith("postgresql://")) {
+				System.setProperty("spring.datasource.url", "jdbc:" + dbUrl);
 				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:" + dbUrl);
 			} else if (dbUrl.startsWith("postgres://")) {
-				System.setProperty("SPRING_DATASOURCE_URL", "jdbc:postgresql://" + dbUrl.substring("postgres://".length()));
+				String formatted = "jdbc:postgresql://" + dbUrl.substring("postgres://".length());
+				System.setProperty("spring.datasource.url", formatted);
+				System.setProperty("SPRING_DATASOURCE_URL", formatted);
 			}
 		}
 
