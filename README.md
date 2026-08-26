@@ -113,11 +113,16 @@ See the detailed [docs/FRONTEND.md](docs/FRONTEND.md) file.
 
 ## Deployment Strategy
 
-For showcasing this application as a production-ready portfolio item, here is a comparison of hosting choices:
+### Local Docker Environment
+You can run the entire stack (PostgreSQL database, Spring Boot backend, and React Nginx frontend) locally using Docker Compose:
 
-| Service / Role | Deployment Option |
-| :--- | :--- |
-| **Backend & Database** | **PaaS (Render / Railway / Fly.io)** — Deploy the Spring Boot app and PostgreSQL for free. |
-| **Frontend** | **Netlify** — Host the React UI and point API calls to the backend. |
+1. Build and start the services:
+   ```bash
+   docker-compose up --build
+   ```
+2. The services will be accessible at:
+   - **Frontend UI**: `http://localhost` (Port 80)
+   - **Backend REST API**: `http://localhost:8080`
+   - **PostgreSQL Database**: `http://localhost:5432`
 
 ---
