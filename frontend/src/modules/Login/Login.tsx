@@ -1,17 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/Card';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { ENDPOINTS } from '@/constants/endpoints';
-import { Shield } from 'lucide-react';
+import { Shield, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+interface SeededUser {
+  id: string;
+  username: string;
+  balance: number;
+}
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
   const [userIdInput, setUserIdInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [seededUsers, setSeededUsers] = useState<SeededUser[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setIsLoadingUsers(true);
+      try {
+        const res = await fetch(ENDPOINTS.LIST_USERS);
+        if (res.ok) {
+          const data = await res.json();
+          setSeededUsers(data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch profiles:', err);
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    };
+    fetchUsers();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +109,38 @@ export const Login: React.FC = () => {
             autoFocus
           />
 
+          {seededUsers.length > 0 && (
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Quick-Select Test Profiles:</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {seededUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => {
+                      setUserIdInput(user.id);
+                      setError(null);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-xl border border-indigo-950/60 bg-indigo-950/15 hover:bg-indigo-950/30 hover:border-indigo-500/40 transition-all text-left group"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">
+                        {user.username}
+                      </div>
+                      <div className="text-[9px] text-slate-500 font-mono mt-0.5 select-all">{user.id}</div>
+                    </div>
+                    <div className="text-xs font-mono font-bold text-slate-400">
+                      ₹{user.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Button type="submit" className="w-full" isLoading={isValidating}>
             Enter Lab Sandbox
           </Button>
@@ -91,15 +149,9 @@ export const Login: React.FC = () => {
         <div className="mt-8 pt-6 border-t border-slate-900 text-xs text-slate-500 space-y-2">
           <p className="font-semibold text-slate-400">Instructions to get started:</p>
           <ul className="list-disc pl-4 space-y-1.5 leading-relaxed">
-            <li>Ensure the Spring Boot backend application is running.</li>
-            <li>Check the backend startup logs in the console to find the pre-seeded profiles:
-              <ul className="list-circle pl-4 mt-1 text-slate-600">
-                <li><span className="font-medium text-slate-400">Alpha Profile</span> (₹5,000.00)</li>
-                <li><span className="font-medium text-slate-400">Beta Profile</span> (₹10,000.00)</li>
-                <li><span className="font-medium text-slate-400">Gamma Profile</span> (₹2,500.00)</li>
-              </ul>
-            </li>
-            <li>Copy the UUID of any seeded user and paste it into the field above.</li>
+            <li>Ensure the Spring Boot backend application is running and databases are seeded.</li>
+            <li>Click on any of the quick-select test profiles above to automatically populate the UUID.</li>
+            <li>Alternatively, manually paste any valid user UUID and click "Enter Lab Sandbox".</li>
           </ul>
         </div>
       </Card>
