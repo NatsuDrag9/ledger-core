@@ -21,7 +21,7 @@ interface IdempotencyLabProps {
 
 export const IdempotencyLab: React.FC<IdempotencyLabProps> = ({ onRefresh }) => {
   const { currentUser } = useAuth();
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => crypto.randomUUID());
   const [amount, setAmount] = useState(500);
   const [type, setType] = useState<TransactionType>('CREDIT');
   const [isSending, setIsSending] = useState(false);

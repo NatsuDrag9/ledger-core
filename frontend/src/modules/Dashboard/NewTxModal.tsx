@@ -18,7 +18,7 @@ export const NewTxModal: React.FC<NewTxModalProps> = ({ isOpen, onClose, onRefre
   const { currentUser } = useAuth();
   const [type, setType] = useState<TransactionType>('DEBIT');
   const [amount, setAmount] = useState('');
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => crypto.randomUUID());
   const [customKey, setCustomKey] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
