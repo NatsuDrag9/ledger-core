@@ -142,3 +142,16 @@ Verifies request deduping using idempotency keys.
 │ └──────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Production Deployment (Railway)
+
+To deploy the React frontend service on Railway using Nginx:
+
+1. **Deploy the Frontend Service**:
+   - Click **New** -> **GitHub Repo** -> select the `ledger-core` repository.
+   - Under Settings, set the **Root Directory** to `frontend`. Railway will automatically build and deploy it using `frontend/Dockerfile` (which serves static assets on Nginx on port 80).
+2. **Configure Environment Variables**:
+   - In the frontend service settings, add the environment variable:
+     - `VITE_API_URL` = `/api/v1/ledger` (Nginx handles proxying client requests from the frontend to the backend internally).

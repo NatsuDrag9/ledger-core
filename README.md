@@ -113,23 +113,42 @@ See the detailed [docs/FRONTEND.md](docs/FRONTEND.md) file.
 
 ## Deployment Strategy
 
-### Production Deployment
-For showcasing this application as a production-ready portfolio item:
+### Local Docker Environment
+You can run the entire stack (PostgreSQL database, Spring Boot backend, and React Nginx frontend) locally using Docker Compose:
 
-#### 1. Backend & Database (Render / Railway)
-- Provision a managed **PostgreSQL** database on Render or Railway.
-- Deploy the Spring Boot application using the provided `backend/Dockerfile`.
-- Set the following environment variables on your backend container:
-  - `SPRING_DATASOURCE_URL`: Your production database URL.
-  - `SPRING_DATASOURCE_USERNAME`: Your database username.
-  - `SPRING_DATASOURCE_PASSWORD`: Your database password.
+1. Build and start the services:
+   ```bash
+   docker compose up --build
+   ```
+2. The services will be accessible at:
+   - **Frontend UI**: `http://localhost:5173` (Nginx mapping host port `5173` to container port `80`)
+   - **Backend REST API**: `http://localhost:8080`
+   - **PostgreSQL Database**: `http://localhost:5432`
 
-#### 2. Frontend (Netlify)
-- Deploy the React UI to **Netlify** using static web hosting.
-- Configure Netlify to run the build command `npm run build` with the publish directory set to `dist/`.
-- Add the `VITE_API_URL` environment variable in the Netlify Dashboard to point to your live backend domain:
-  ```env
-  VITE_API_URL=https://<your-backend-domain>.railway.app/api/v1/ledger
-  ```
+---
+
+### Production Railway Deployment
+
+You can deploy the entire ledger system (PostgreSQL database, Spring Boot backend, and React Nginx frontend) onto Railway from this repository.
+
+#### 1. Provision a PostgreSQL Database
+1. In your Railway project dashboard, click **New** -> **Database** -> **Add PostgreSQL**.
+2. Railway will automatically initialize the database cluster and generate connection credentials.
+
+#### 2. Deploy the Spring Boot Backend
+1. Click **New** -> **GitHub Repo** -> select the `ledger-core` repository.
+2. In the service settings, set the **Root Directory** to `backend`. Railway will automatically locate the `backend/Dockerfile` to compile and launch the Java application.
+3. Add the database environment variables to link the backend to the database service:
+   - `SPRING_DATASOURCE_URL` = `${{Postgres.DATABASE_URL}}`
+   - `SPRING_DATASOURCE_USERNAME` = `${{Postgres.PGUSER}}`
+   - `SPRING_DATASOURCE_PASSWORD` = `${{Postgres.PGPASSWORD}}`
+
+#### 3. Deploy the React Frontend
+1. Click **New** -> **GitHub Repo** -> select the `ledger-core` repository.
+2. In the service settings:
+   - Set the **Root Directory** to `frontend`. Railway will automatically find the `frontend/Dockerfile` and compile the static files into Nginx.
+   - Set the branch to the one containing the frontend Dockerfile (`main` after merge).
+3. Add the following environment variable to the service:
+   - `VITE_API_URL` = `/api/v1/ledger` (Nginx handles proxying client requests from the frontend to the backend internally).
 
 ---

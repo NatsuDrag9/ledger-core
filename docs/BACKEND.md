@@ -587,3 +587,21 @@ Only introduce additional components when a concrete requirement or bottleneck j
 
 The goal is to understand WHY each architectural decision exists, rather than memorize a particular architecture.
 ```
+
+---
+
+## Production Deployment (Railway)
+
+To deploy the Spring Boot backend service on Railway:
+
+1. **Provision a PostgreSQL Database**: 
+   - Click **New** -> **Database** -> **Add PostgreSQL**.
+2. **Deploy the Backend Service**:
+   - Click **New** -> **GitHub Repo** -> select the `ledger-core` repository.
+   - Under Settings, set the **Root Directory** to `backend`. Railway will automatically build and deploy it using `backend/Dockerfile`.
+3. **Configure Environment Variables**:
+   - Link the backend to the database service by adding:
+     - `SPRING_DATASOURCE_URL` = `${{Postgres.DATABASE_URL}}`
+     - `SPRING_DATASOURCE_USERNAME` = `${{Postgres.PGUSER}}`
+     - `SPRING_DATASOURCE_PASSWORD` = `${{Postgres.PGPASSWORD}}`
+
